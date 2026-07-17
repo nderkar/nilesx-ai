@@ -1,0 +1,146 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum TaskPriority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum TaskHistoryAction {
+  CREATED
+  ASSIGNED
+  REASSIGNED
+  STARTED
+  COMPLETED
+  UPDATED
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  users User[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  roleId       String
+  role         Role     @relation(fields: [roleId], references: [id])
+  createdAt    DateTime @default(now())
+
+  createdTasks   Task[]        @relation("TaskCreatedBy")
+  assignedTasks  Task[]        @relation("TaskAssignee")
+  historyEntries TaskHistory[] @relation("TaskHistoryActor")
+  comments       Comment[]     @relation("TaskCommentAuthor")
+  activityLogs   ActivityLog[]
+}
+
+model Task {
+  id          String       @id @default(cuid())
+  title       String
+  description String?
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  dueDate     DateTime?
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  createdById String
+  createdBy   User   @relation("TaskCreatedBy", fields: [createdById], references: [id])
+
+  assigneeId String?
+  assignee   User?   @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  history  TaskHistory[]
+  comments Comment[]
+
+  @@index([assigneeId])
+  @@index([status])
+  @@index([priority])
+}
+
+// A discussion thread on a task, distinct from TaskHistory (which is a
+// system-recorded audit log of state transitions, not a conversation).
+model Comment {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation("TaskCommentAuthor", fields: [authorId], references: [id])
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+}
+
+model TaskHistory {
+  id        String            @id @default(cuid())
+  taskId    String
+  task      Task              @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actorId   String
+  actor     User              @relation("TaskHistoryActor", fields: [actorId], references: [id])
+  action    TaskHistoryAction
+  fromValue String?
+  toValue   String?
+  note      String?
+  createdAt DateTime          @default(now())
+
+  @@index([taskId])
+}
+
+// One row per known Nilex AI tool (MCP + CLI). `enabled` is the only field an
+// admin edits from the UI; everything else is pushed here automatically by
+// nilex-ai on startup (see POST /tool-settings/sync) so this table always
+// mirrors nilex-ai/src/registry.ts without anyone hand-syncing two files.
+model ToolSetting {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  description   String?
+  category      String?
+  requiredRoles String? // comma-joined, e.g. "ADMIN,MANAGER"; null = any logged-in identity
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// Audit trail of every mutating action across ALL clients (web dashboard,
+// nilex CLI, MCP tools) — they all ultimately hit this same REST API, so
+// logging once at the HTTP layer captures everyone uniformly. Actor details
+// are denormalized (snapshotted) so a log entry stays readable even if the
+// user is later renamed or deleted.
+model ActivityLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actorName  String
+  actorEmail String
+  actorRole  String
+  client     String // "web" | "cli" | "mcp-stdio" | "mcp-http"
+  method     String
+  path       String
+  statusCode Int
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}

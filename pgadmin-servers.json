@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Todo Platform (Docker)",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "todo_platform",
+      "Username": "todo_app",
+      "SSLMode": "prefer",
+      "Comment": "Same DB backend/frontend use — Host is the docker-compose service name (internal network), not localhost."
+    }
+  }
+}

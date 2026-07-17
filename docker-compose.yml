@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: todo-platform-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: todo_app
+      POSTGRES_PASSWORD: todo_app_password
+      POSTGRES_DB: todo_platform
+    ports:
+      - "5433:5432"
+    volumes:
+      - todo-platform-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U todo_app -d todo_platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: todo-platform-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_LOGIN_BANNER: '"Todo Platform - local dev only"'
+    ports:
+      - "5050:80"
+    volumes:
+      - todo-platform-pgadmin-data:/var/lib/pgadmin
+      # Pre-registers the "Todo Platform (Docker)" server on first boot so
+      # you don't have to type host/port/db by hand — see pgadmin-servers.json.
+      - ./pgadmin-servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  todo-platform-pgdata:
+  todo-platform-pgadmin-data:
