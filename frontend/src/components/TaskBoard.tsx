@@ -2,6 +2,8 @@ import { useState } from "react";
 import { api, isTaskOverdue, type Task, type TaskPriority, type TaskStatus, type User } from "../lib/api";
 import { TaskFormModal } from "./TaskFormModal";
 import { TaskDetailModal } from "./TaskDetailModal";
+import { StartCompleteModal } from "./StartCompleteModal";
+import { useToast } from "./ToastProvider";
 import { IconEdit, IconPlus, IconTrash } from "./icons";
 
 const STATUS_COLUMNS: { status: TaskStatus; label: string; accent: string }[] = [
@@ -32,10 +34,12 @@ interface TaskBoardProps {
 }
 
 export function TaskBoard({ tasks, users, currentUserId, canManage, onChanged, emptyLabel }: TaskBoardProps) {
+  const { showToast } = useToast();
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [viewingTaskId, setViewingTaskId] = useState<string | null>(null);
+  const [actionTask, setActionTask] = useState<{ task: Task; action: "start" | "complete" } | null>(null);
 
   async function run(action: () => Promise<unknown>) {
     try {
@@ -163,7 +167,7 @@ export function TaskBoard({ tasks, users, currentUserId, canManage, onChanged, e
                           <select
                             value={task.assignee?.id ?? ""}
                             onChange={(e) => run(() => api.assignTask(task.id, e.target.value || null))}
-                            className="rounded border border-slate-300 bg-white px-1.5 py-1 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                            className="field-sm"
                           >
                             <option value="">Unassigned</option>
                             {users.map((u) => (
@@ -182,15 +186,15 @@ export function TaskBoard({ tasks, users, currentUserId, canManage, onChanged, e
                           <div className="flex gap-1">
                             {task.status === "TODO" && (
                               <button
-                                onClick={() => run(() => api.startTask(task.id))}
+                                onClick={() => setActionTask({ task, action: "start" })}
                                 className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-200 dark:bg-amber-500/15 dark:text-amber-300"
                               >
                                 Start
                               </button>
                             )}
-                            {task.status !== "COMPLETED" && (
+                            {task.status === "IN_PROGRESS" && (
                               <button
-                                onClick={() => run(() => api.completeTask(task.id))}
+                                onClick={() => setActionTask({ task, action: "complete" })}
                                 className="rounded bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300"
                               >
                                 Complete
@@ -242,6 +246,21 @@ export function TaskBoard({ tasks, users, currentUserId, canManage, onChanged, e
 
       {viewingTaskId && (
         <TaskDetailModal taskId={viewingTaskId} onClose={() => setViewingTaskId(null)} />
+      )}
+
+      {actionTask && (
+        <StartCompleteModal
+          task={actionTask.task}
+          action={actionTask.action}
+          onClose={() => setActionTask(null)}
+          onSuccess={async () => {
+            const message =
+              actionTask.action === "start" ? "Task started successfully" : "Task completed successfully";
+            setActionTask(null);
+            await onChanged();
+            showToast(message);
+          }}
+        />
       )}
     </div>
   );

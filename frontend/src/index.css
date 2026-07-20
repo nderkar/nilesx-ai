@@ -4,7 +4,9 @@
 
 body {
   margin: 0;
-  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  font-family: "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 ::-webkit-scrollbar {
@@ -17,4 +19,37 @@ body {
 ::-webkit-scrollbar-thumb {
   background: rgb(148 163 184 / 0.5);
   border-radius: 9999px;
+}
+
+@layer components {
+  /* Shared form-field look: a light, soft-glow border on focus instead of a
+     heavy solid one — the "selected" state should read as lifted, not boxed. */
+  .field {
+    @apply w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900
+      shadow-sm outline-none transition-all duration-150 placeholder:text-slate-400
+      hover:border-slate-300
+      focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/10
+      disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400
+      dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500
+      dark:hover:border-slate-600
+      dark:focus:border-indigo-400 dark:focus:ring-indigo-400/10
+      dark:disabled:bg-slate-800/50 dark:disabled:text-slate-500;
+  }
+
+  /* Compact variant for inline/dense controls (kanban card selects, filter bars). */
+  .field-sm {
+    @apply rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700
+      shadow-sm outline-none transition-all duration-150
+      hover:border-slate-300
+      focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/10
+      dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200
+      dark:hover:border-slate-600
+      dark:focus:border-indigo-400 dark:focus:ring-indigo-400/10;
+  }
+
+  .btn-secondary {
+    @apply rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700
+      transition-colors duration-150 hover:border-slate-300 hover:bg-slate-50
+      dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800;
+  }
 }

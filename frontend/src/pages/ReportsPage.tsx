@@ -37,7 +37,7 @@ function StatTile({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
       <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
-      <p className="mt-1 text-3xl font-semibold text-slate-900 dark:text-white">
+      <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">
         {typeof value === "number" ? value.toLocaleString() : value}
       </p>
     </div>
@@ -325,7 +325,7 @@ export function ReportsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Reports</h1>
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-white">Reports</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Task status, workload, and completion trend across the team.
           </p>
@@ -333,7 +333,7 @@ export function ReportsPage() {
         {summary && (
           <button
             onClick={() => setShowTable((v) => !v)}
-            className="shrink-0 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+            className="btn-secondary shrink-0 text-xs"
           >
             {showTable ? "Show charts" : "View as table"}
           </button>

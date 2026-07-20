@@ -34,7 +34,7 @@ export function RolesPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Manage Roles</h1>
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-white">Manage Roles</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             ADMIN, MANAGER, and MEMBER are built-in. Add custom roles as needed.
           </p>

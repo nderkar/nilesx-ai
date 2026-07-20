@@ -52,7 +52,7 @@ export function ToolRegistryPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Tool Registry</h1>
+        <h1 className="text-lg font-semibold text-slate-900 dark:text-white">Tool Registry</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Every operation Nilex AI exposes through MCP (Claude Desktop/Code) and the{" "}
           <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-slate-800">nilex</code> CLI.

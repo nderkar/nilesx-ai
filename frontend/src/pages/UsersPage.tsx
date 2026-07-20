@@ -37,7 +37,7 @@ export function UsersPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Manage Users</h1>
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-white">Manage Users</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Create, update, and remove workspace members.
           </p>

@@ -86,14 +86,20 @@ Requires the Phase 1 backend running at `http://localhost:4000` (override with `
 `.env` is loaded automatically regardless of how the process is launched (npm script, global `nilex`
 bin, or Claude Desktop spawning it directly) — see `src/lib/loadEnv.ts` if you're curious how.
 
-## The tool registry (21 tools)
+## The tool registry (24 tools)
 
 | Group | Tools |
 |---|---|
 | Session | `login`, `logout`, `whoami`, `login_with_token` (internal — see Phase 4 below) |
-| Tasks | `list_my_tasks`, `list_all_tasks`, `get_task`, `get_task_history`, `create_task`, `update_task`, `assign_task`, `start_task`, `complete_task`, `delete_task` |
+| Tasks | `list_my_tasks`, `list_all_tasks`, `get_task`, `get_task_history`, `create_task`, `update_task`, `assign_task`, `start_task`, `complete_task`, `delete_task`, `list_comments`, `add_comment` |
 | Users | `list_users`, `create_user`, `update_user`, `delete_user` |
 | Roles | `list_roles`, `create_role`, `update_role`, `delete_role` |
+
+`create_task`/`update_task` also accept `priority` (`HIGH`/`MEDIUM`/`LOW`) and `dueDate` (ISO 8601);
+`list_all_tasks` additionally filters by `priority` and `overdue`. `add_comment`/`list_comments` are a
+task's discussion thread, separate from `get_task_history`'s audit trail of status changes. A bridged
+Agent session (see Phase 4 below) can't call `login`, `logout`, or `login_with_token` at all — see
+"Phase 4" for why.
 
 Every tool (except `login`/`logout`/`whoami`) requires calling `login` first in that session, and every
 tool's actual permission (ADMIN/MANAGER/MEMBER) is enforced by the Phase 1 backend — the tool just
@@ -244,6 +250,18 @@ no decision to make: you're already who you are). `login_with_token` is marked `
 registry, same as `login`/`logout`/`whoami` — it's plumbing, not an AI-invokable capability, so it's
 never synced to the Admin panel's Tool Registry and can't be disabled from there.
 
+Once a session has been bridged this way, `AgentSession` also strips `login` and `logout` from what
+the LLM can call at all (`rebuildTools()` in `src/agent/agentSession.ts`) — a bridged conversation's
+identity belongs entirely to the dashboard, for its whole lifetime. Without this, asking the chat to
+"log me out" would clear that session's auth with no way back in (nothing re-bridges it automatically),
+stranding the conversation even though the dashboard session is still valid; and leaving `login`
+reachable would let the model ask an already-signed-in user to retype their password in plain text into
+an unmasked chat input if anything nudged it to. The CLI's `nilex chat` REPL and Claude Desktop/Code
+never bridge, so they keep full natural-language `login`/`logout` as before. On the dashboard side,
+`frontend/src/lib/auth.tsx`'s `login()`/`logout()` also discard any chat session left over from a
+different (or no) user via `discardChatSessionIfStale()`, so switching dashboard users starts the
+widget's next conversation bridged to the new identity instead of continuing the old one.
+
 **Streaming renders live**, including a "using `{tool}`..." indicator the instant Claude decides to
 call something — driven by the same NDJSON protocol shown above, read via `fetch()` + a
 `ReadableStream` reader (the browser's `EventSource` can't POST a body or send custom headers, so
@@ -268,41 +286,145 @@ npm link        # one-time: registers the global `nilex` command (uses package.j
 `npm link` creates a global symlink/shim so `nilex` resolves from any directory, just like any other
 globally-installed CLI tool. Re-run `npm run build` after code changes — no need to re-link.
 
-```sh
-nilex login          # prompts for email + password, stores a token in ~/.nilex/
-nilex whoami
-nilex tasks list-my
-nilex tasks list-all --status TODO
-nilex tasks create --title "Ship the release notes" --assignee <userId>
-nilex tasks start <taskId>
-nilex tasks complete <taskId>
-nilex tasks assign <taskId> --to <userId>
-nilex tasks delete <taskId>
-nilex users list
-nilex roles list
-nilex logout
-```
-
 Every command is a thin wrapper that looks up the tool by name in `src/registry.ts` and runs its
 `handler` — same code path MCP uses, just printed to a terminal instead of returned as MCP content.
+Task output is color-coded (red = High priority / overdue, amber = Medium priority / In Progress,
+green = Completed, slate = Low priority / To Do) via a small hand-rolled ANSI helper
+(`src/cli/colors.ts`, no dependency) — colors turn off automatically when piped to a file/program or
+when `NO_COLOR` is set.
 
-### Short forms
+Below, each command that takes flags is shown three ways: the **bare minimum** (required arguments
+only), **one optional flag added**, and a **realistic full example** the way you'd actually type it.
+Commands with no optional flags just get one example.
 
-Every subcommand group and the most common actions have short aliases and short flags, so the above
-compresses to:
+### Session
 
 ```sh
-nilex t la -s TODO              # tasks list-all --status TODO
-nilex t lm                      # tasks list-my
-nilex t new -t "Title" -a <id>  # tasks create --title ... --assignee ...
-nilex t done <taskId>           # tasks complete <taskId>
-nilex t rm <taskId>             # tasks delete <taskId>
-nilex t assign <taskId> -t <id> # tasks assign <taskId> --to <id>
-nilex u ls                      # users list
-nilex r ls                      # roles list
+nilex login       # prompts for Email/Password, stores a token in ~/.nilex/credentials.json
+nilex whoami       # who's currently logged in, and their role
+nilex logout       # clears the stored token
 ```
 
-Run `nilex --help` or `nilex tasks --help` any time to see every alias and flag.
+### Tasks — `nilex tasks` (alias `nilex t`)
+
+**List your own tasks** — `list-my` (alias `lm`) — no flags
+
+```sh
+nilex t lm
+```
+
+**List every task** (ADMIN/MANAGER only) — `list-all` (alias `la`)
+
+| Flag | Required? | Value |
+|---|---|---|
+| `-s, --status <status>` | optional | `TODO` \| `IN_PROGRESS` \| `COMPLETED` |
+| `-a, --assignee <userId>` | optional | filter to one assignee |
+| `-p, --priority <priority>` | optional | `HIGH` \| `MEDIUM` \| `LOW` |
+| `--overdue` | optional | only tasks past their due date and not completed |
+
+```sh
+nilex t la                                    # every task, no filters
+nilex t la --status TODO                      # one filter
+nilex t la -p HIGH --overdue -a <userId>       # combined: high-priority, overdue, one assignee
+```
+
+**Show full detail for one task** — `show <taskId>` — taskId required, no flags
+
+```sh
+nilex t show <taskId>
+# Priority test task
+# <taskId>
+#
+# Status:      IN_PROGRESS
+# Priority:    HIGH
+# Assignee:    Sam Member
+# Created by:  Alice Admin
+# Due:         Aug 1 2026
+# Started:     7/18/2026, 9:02:00 am
+```
+
+**Create a task** (ADMIN/MANAGER only) — `create` (alias `new`)
+
+| Flag | Required? | Value |
+|---|---|---|
+| `-t, --title <title>` | **required** | task title |
+| `-d, --description <description>` | optional | longer description |
+| `-a, --assignee <userId>` | optional | assign immediately, otherwise unassigned |
+| `-p, --priority <priority>` | optional | `HIGH` \| `MEDIUM` \| `LOW`, defaults to `MEDIUM` |
+| `--due <date>` | optional | ISO 8601, or a bare `YYYY-MM-DD` (normalized to midnight UTC for you) |
+
+```sh
+nilex t new -t "Fix login bug"                                     # title only — MEDIUM, unassigned, no due date
+nilex t new -t "Fix login bug" -p high                             # add a priority
+nilex t new -t "Fix login bug" -p high --due 2026-08-01 -a <userId> \
+  -d "Repro: session silently expires on the login form"           # full — every optional flag
+```
+
+**Edit priority/due date** (ADMIN/MANAGER only) — `update <taskId>`
+
+| Flag | Required? | Value |
+|---|---|---|
+| `-p, --priority <priority>` | optional | new priority |
+| `--due <date>` | optional | new due date (same formats as `create`) |
+
+```sh
+nilex t update <taskId> -p high                       # bump priority only
+nilex t update <taskId> --due 2026-09-01               # push the deadline only
+nilex t update <taskId> -p high --due 2026-09-01       # both at once
+```
+
+**Start / complete a task** — `start <taskId>`, `complete <taskId>` (alias `done`) — taskId required, no flags
+
+```sh
+nilex t start <taskId>
+nilex t done <taskId>
+```
+
+**Assign or unassign** — `assign <taskId>`
+
+| Flag | Required? | Value |
+|---|---|---|
+| `-t, --to <userId>` | optional | omit entirely to unassign |
+
+```sh
+nilex t assign <taskId> -t <userId>   # assign to someone
+nilex t assign <taskId>                # no -t/--to at all — unassigns
+```
+
+**Delete** (ADMIN/MANAGER only) — `delete <taskId>` (alias `rm`) — taskId required, no flags
+
+```sh
+nilex t rm <taskId>
+```
+
+**Comments** — `comments <taskId>` (list, oldest first) and `comment <taskId> <text>` (add) — positional only, no flags
+
+```sh
+nilex t comments <taskId>
+nilex t comment <taskId> "Blocked on the auth team's fix"
+```
+
+### Users & Roles
+
+```sh
+nilex u ls   # users list — ADMIN/MANAGER only
+nilex r ls   # roles list — ADMIN only
+```
+
+### Short forms reference
+
+| Full | Short | Full | Short |
+|---|---|---|---|
+| `nilex tasks` | `nilex t` | `tasks list-my` | `t lm` |
+| `nilex users` | `nilex u` | `tasks list-all` | `t la` |
+| `nilex roles` | `nilex r` | `tasks create` | `t new` |
+| `users list` | `u ls` | `tasks complete` | `t done` |
+| `roles list` | `r ls` | `tasks delete` | `t rm` |
+
+(`show`, `update`, `assign`, `comment(s)`, `start` have no shorter alias — their full names are
+already short enough that `commander` doesn't need one.)
+
+Run `nilex --help` or `nilex tasks --help` any time to see every alias and flag straight from the source.
 
 ## Verifying it yourself
 
@@ -314,4 +436,6 @@ npm run test:agent   # scripted multi-turn conversation through the real Claude 
 
 ## What's next
 
-- **Phase 5+**: notifications, reporting, tests/CI, deployment — see the top-level `README.md`.
+Dashboard-side phases (notifications, reporting, task priority/deadlines/comments) and the chat
+session-identity/logout fixes are documented in the top-level `README.md` — this file covers the
+MCP/CLI/Agent layer only. Next up here: tests/CI, deployment.

@@ -32,7 +32,7 @@ export function LoginPage() {
             TP
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-slate-900 dark:text-white">Task Platform</h1>
+            <h1 className="text-base font-semibold text-slate-900 dark:text-white">Task Platform</h1>
             <p className="text-xs text-slate-500 dark:text-slate-400">Sign in to continue</p>
           </div>
         </div>
@@ -43,7 +43,7 @@ export function LoginPage() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+            className="field"
             required
           />
         </div>
@@ -54,7 +54,7 @@ export function LoginPage() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+            className="field"
             required
           />
         </div>

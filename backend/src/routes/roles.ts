@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 import { prisma } from "../lib/prisma.js";
 import { authenticate, requireRole } from "../middleware/auth.js";
 
@@ -13,73 +14,105 @@ const updateRoleSchema = z.object({
   description: z.string().nullable().optional(),
 });
 
+const idParamSchema = { type: "object", properties: { id: { type: "string" } }, required: ["id"] };
+
 const PROTECTED_ROLE_NAMES = ["ADMIN", "MANAGER", "MEMBER"];
 
 export async function roleRoutes(app: FastifyInstance) {
   app.addHook("preHandler", authenticate);
 
   // ADMIN only: role management is an admin-only surface.
-  app.get("/roles", { preHandler: requireRole("ADMIN") }, async (_request, reply) => {
-    const roles = await prisma.role.findMany({
-      orderBy: { name: "asc" },
-      include: { _count: { select: { users: true } } },
-    });
-    return reply.send({ roles });
-  });
+  app.get(
+    "/roles",
+    { preHandler: requireRole("ADMIN"), schema: { tags: ["Roles"], summary: "List roles" } },
+    async (_request, reply) => {
+      const roles = await prisma.role.findMany({
+        orderBy: { name: "asc" },
+        include: { _count: { select: { users: true } } },
+      });
+      return reply.send({ roles });
+    },
+  );
 
-  app.post("/roles", { preHandler: requireRole("ADMIN") }, async (request, reply) => {
-    const body = createRoleSchema.parse(request.body);
-    const existing = await prisma.role.findUnique({ where: { name: body.name } });
-    if (existing) {
-      return reply.code(409).send({ error: "A role with this name already exists" });
-    }
-    const role = await prisma.role.create({ data: body });
-    return reply.code(201).send({ role });
-  });
-
-  app.patch("/roles/:id", { preHandler: requireRole("ADMIN") }, async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const body = updateRoleSchema.parse(request.body);
-
-    const existing = await prisma.role.findUnique({ where: { id } });
-    if (!existing) {
-      return reply.code(404).send({ error: "Role not found" });
-    }
-    if (PROTECTED_ROLE_NAMES.includes(existing.name) && body.name && body.name !== existing.name) {
-      return reply.code(400).send({ error: `Cannot rename the built-in ${existing.name} role` });
-    }
-
-    if (body.name && body.name !== existing.name) {
-      const nameTaken = await prisma.role.findUnique({ where: { name: body.name } });
-      if (nameTaken) {
+  app.post(
+    "/roles",
+    {
+      preHandler: requireRole("ADMIN"),
+      schema: { tags: ["Roles"], summary: "Create a role", body: zodToJsonSchema(createRoleSchema) },
+    },
+    async (request, reply) => {
+      const body = createRoleSchema.parse(request.body);
+      const existing = await prisma.role.findUnique({ where: { name: body.name } });
+      if (existing) {
         return reply.code(409).send({ error: "A role with this name already exists" });
       }
-    }
+      const role = await prisma.role.create({ data: body });
+      return reply.code(201).send({ role });
+    },
+  );
 
-    const role = await prisma.role.update({ where: { id }, data: body });
-    return reply.send({ role });
-  });
+  app.patch(
+    "/roles/:id",
+    {
+      preHandler: requireRole("ADMIN"),
+      schema: {
+        tags: ["Roles"],
+        summary: "Update a role",
+        params: idParamSchema,
+        body: zodToJsonSchema(updateRoleSchema),
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const body = updateRoleSchema.parse(request.body);
 
-  app.delete("/roles/:id", { preHandler: requireRole("ADMIN") }, async (request, reply) => {
-    const { id } = request.params as { id: string };
+      const existing = await prisma.role.findUnique({ where: { id } });
+      if (!existing) {
+        return reply.code(404).send({ error: "Role not found" });
+      }
+      if (PROTECTED_ROLE_NAMES.includes(existing.name) && body.name && body.name !== existing.name) {
+        return reply.code(400).send({ error: `Cannot rename the built-in ${existing.name} role` });
+      }
 
-    const existing = await prisma.role.findUnique({
-      where: { id },
-      include: { _count: { select: { users: true } } },
-    });
-    if (!existing) {
-      return reply.code(404).send({ error: "Role not found" });
-    }
-    if (PROTECTED_ROLE_NAMES.includes(existing.name)) {
-      return reply.code(400).send({ error: `Cannot delete the built-in ${existing.name} role` });
-    }
-    if (existing._count.users > 0) {
-      return reply
-        .code(409)
-        .send({ error: "Cannot delete a role that still has users assigned to it" });
-    }
+      if (body.name && body.name !== existing.name) {
+        const nameTaken = await prisma.role.findUnique({ where: { name: body.name } });
+        if (nameTaken) {
+          return reply.code(409).send({ error: "A role with this name already exists" });
+        }
+      }
 
-    await prisma.role.delete({ where: { id } });
-    return reply.code(204).send();
-  });
+      const role = await prisma.role.update({ where: { id }, data: body });
+      return reply.send({ role });
+    },
+  );
+
+  app.delete(
+    "/roles/:id",
+    {
+      preHandler: requireRole("ADMIN"),
+      schema: { tags: ["Roles"], summary: "Delete a role", params: idParamSchema },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+
+      const existing = await prisma.role.findUnique({
+        where: { id },
+        include: { _count: { select: { users: true } } },
+      });
+      if (!existing) {
+        return reply.code(404).send({ error: "Role not found" });
+      }
+      if (PROTECTED_ROLE_NAMES.includes(existing.name)) {
+        return reply.code(400).send({ error: `Cannot delete the built-in ${existing.name} role` });
+      }
+      if (existing._count.users > 0) {
+        return reply
+          .code(409)
+          .send({ error: "Cannot delete a role that still has users assigned to it" });
+      }
+
+      await prisma.role.delete({ where: { id } });
+      return reply.code(204).send();
+    },
+  );
 }

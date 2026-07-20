@@ -123,7 +123,7 @@ export function TaskDetailModal({ taskId, onClose }: { taskId: string; onClose: 
         <div className="space-y-5">
           <div>
             <div className="flex items-start justify-between gap-2">
-              <h3 className="text-base font-semibold text-slate-900 dark:text-white">{task.title}</h3>
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{task.title}</h3>
               <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[task.status]}`}>
                 {task.status.replace("_", " ")}
               </span>
@@ -185,7 +185,7 @@ export function TaskDetailModal({ taskId, onClose }: { taskId: string; onClose: 
             {task.history.length === 0 ? (
               <p className="text-sm text-slate-400">No history yet.</p>
             ) : (
-              <ol className="space-y-0">
+              <ol className="max-h-52 space-y-0 overflow-y-auto pr-1">
                 {[...task.history].reverse().map((entry, i) => {
                   const style = ACTION_STYLE[entry.action] ?? { label: entry.action, dot: "bg-slate-400" };
                   const isLast = i === task.history.length - 1;
@@ -215,7 +215,7 @@ export function TaskDetailModal({ taskId, onClose }: { taskId: string; onClose: 
             {task.comments.length === 0 ? (
               <p className="text-sm text-slate-400">No comments yet.</p>
             ) : (
-              <ul className="space-y-3">
+              <ul className="max-h-52 space-y-3 overflow-y-auto pr-1">
                 {task.comments.map((c) => (
                   <li key={c.id} className="rounded-md bg-slate-50 p-2.5 dark:bg-slate-800/60">
                     <div className="flex items-center justify-between gap-2">
@@ -237,14 +237,14 @@ export function TaskDetailModal({ taskId, onClose }: { taskId: string; onClose: 
                   onChange={(e) => setCommentBody(e.target.value)}
                   placeholder="Add a comment..."
                   rows={2}
-                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                  className="field"
                 />
                 {commentError && <p className="text-xs text-red-600 dark:text-red-400">{commentError}</p>}
                 <div className="flex justify-end">
                   <button
                     onClick={handleAddComment}
                     disabled={postingComment || !commentBody.trim()}
-                    className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+                    className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-indigo-500 disabled:opacity-60"
                   >
                     {postingComment ? "Posting..." : "Post comment"}
                   </button>

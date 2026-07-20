@@ -16,7 +16,10 @@ export async function reportRoutes(app: FastifyInstance) {
   // of infrastructure for a dashboard this size.
   app.get(
     "/reports/summary",
-    { preHandler: [authenticate, requireRole(...MANAGE_ROLES)] },
+    {
+      preHandler: [authenticate, requireRole(...MANAGE_ROLES)],
+      schema: { tags: ["Reports"], summary: "Aggregate task reporting" },
+    },
     async (_request, reply) => {
       const now = new Date();
       const fourteenDaysAgo = new Date(now.getTime() - TREND_DAYS * 24 * 60 * 60 * 1000);

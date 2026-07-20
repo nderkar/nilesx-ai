@@ -49,7 +49,7 @@ export function ActivityLogPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Activity Log</h1>
+        <h1 className="text-lg font-semibold text-slate-900 dark:text-white">Activity Log</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Every mutating action across the web dashboard, the CLI, and MCP tool calls — including
           denied attempts. They all funnel through the same backend API, so this is a single,

@@ -50,7 +50,7 @@ export function DashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900 dark:text-white">
+        <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
           Welcome back, {user?.name?.split(" ")[0]}
         </h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -67,7 +67,7 @@ export function DashboardPage() {
             <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${c.color}`}>
               {c.label}
             </span>
-            <p className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white">{c.count}</p>
+            <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-white">{c.count}</p>
           </div>
         ))}
       </div>

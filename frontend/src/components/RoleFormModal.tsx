@@ -40,7 +40,7 @@ export function RoleFormModal({ mode, role, onClose, onSubmit }: RoleFormModalPr
             value={name}
             onChange={(e) => setName(e.target.value.toUpperCase())}
             disabled={isProtected}
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-800/50"
+            className="field"
             required
           />
           {isProtected && (
@@ -54,7 +54,7 @@ export function RoleFormModal({ mode, role, onClose, onSubmit }: RoleFormModalPr
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={2}
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+            className="field"
           />
         </div>
 
@@ -64,14 +64,14 @@ export function RoleFormModal({ mode, role, onClose, onSubmit }: RoleFormModalPr
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+            className="btn-secondary"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={saving}
-            className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+            className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:opacity-60"
           >
             {saving ? "Saving..." : mode === "create" ? "Create role" : "Save changes"}
           </button>

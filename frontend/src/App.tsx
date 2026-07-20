@@ -4,6 +4,7 @@ import { ThemeProvider } from "./lib/theme";
 import { LoginPage } from "./components/LoginPage";
 import { AppLayout } from "./components/layout/AppLayout";
 import { RequireRole } from "./components/RequireRole";
+import { ToastProvider } from "./components/ToastProvider";
 import { DashboardPage } from "./pages/DashboardPage";
 import { MyTasksPage } from "./pages/MyTasksPage";
 import { AllTasksPage } from "./pages/AllTasksPage";
@@ -105,9 +106,11 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
+        <ToastProvider>
+          <BrowserRouter>
+            <AppRoutes />
+          </BrowserRouter>
+        </ToastProvider>
       </AuthProvider>
     </ThemeProvider>
   );

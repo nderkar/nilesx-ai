@@ -6,7 +6,19 @@ import { describeActivity } from "../lib/activityDescriptions.js";
 export async function activityLogRoutes(app: FastifyInstance) {
   app.get(
     "/activity-log",
-    { preHandler: [authenticate, requireRole("ADMIN")] },
+    {
+      preHandler: [authenticate, requireRole("ADMIN")],
+      schema: {
+        tags: ["Activity Log"],
+        summary: "List the cross-client audit trail",
+        querystring: {
+          type: "object",
+          properties: {
+            limit: { type: "string", description: "Max rows to return, capped at 200 (default 100)" },
+          },
+        },
+      },
+    },
     async (request, reply) => {
       const { limit } = request.query as { limit?: string };
       const take = Math.min(Number(limit) || 100, 200);

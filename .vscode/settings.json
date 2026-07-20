@@ -1,0 +1,11 @@
+{
+  // Tailwind CSS IntelliSense's "cssConflict" lint doesn't understand this
+  // project's Tailwind v4 `@custom-variant dark (&:where(.dark, .dark *))`
+  // (see frontend/src/index.css) — it treats every light/dark class pair
+  // (e.g. `border-slate-200 dark:border-slate-700`) as an unconditional
+  // conflict on the same property, even though only one is ever active at
+  // once. That's the app's standard, intentional dark-mode pattern used
+  // throughout, not a real conflict, so this rule is disabled rather than
+  // suppressed one warning at a time.
+  "tailwindCSS.lint.cssConflict": "ignore"
+}

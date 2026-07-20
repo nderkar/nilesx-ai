@@ -1,6 +1,8 @@
 import { getToken } from "./api";
 
 const AGENT_BASE = "/agent";
+const SESSION_KEY = "todo-platform-chat-session";
+const SESSION_USER_KEY = "todo-platform-chat-session-user";
 
 export interface ChatSession {
   sessionId: string;
@@ -34,6 +36,39 @@ export async function deleteChatSession(sessionId: string): Promise<void> {
   await fetch(`${AGENT_BASE}/chat/sessions/${sessionId}`, { method: "DELETE" }).catch(() => {
     // Best-effort cleanup — nothing the caller can do if this fails.
   });
+}
+
+/** The chat session persists in sessionStorage for the browser tab's
+ * lifetime (see ChatWidget), tagged with the dashboard user it was bridged
+ * for. These helpers are the only thing that touches those two keys, so the
+ * "whose session is this" bookkeeping lives in one place. */
+export function getStoredChatSession(): { sessionId: string; userId: string | null } | null {
+  const sessionId = sessionStorage.getItem(SESSION_KEY);
+  if (!sessionId) return null;
+  return { sessionId, userId: sessionStorage.getItem(SESSION_USER_KEY) };
+}
+
+export function storeChatSession(sessionId: string, userId: string | null): void {
+  sessionStorage.setItem(SESSION_KEY, sessionId);
+  if (userId) sessionStorage.setItem(SESSION_USER_KEY, userId);
+  else sessionStorage.removeItem(SESSION_USER_KEY);
+}
+
+export function clearStoredChatSession(): void {
+  sessionStorage.removeItem(SESSION_KEY);
+  sessionStorage.removeItem(SESSION_USER_KEY);
+}
+
+/** Tears down any chat session left over from a different dashboard user (or
+ * from being logged out) — same check covers both login-as-someone-else and
+ * logout, since "no longer the same owner" is exactly what both have in
+ * common. Best-effort: if the DELETE fails, the stale session just ages out
+ * on the Agent server rather than blocking sign-in/sign-out on it. */
+export async function discardChatSessionIfStale(currentUserId: string | null): Promise<void> {
+  const stored = getStoredChatSession();
+  if (!stored || stored.userId === currentUserId) return;
+  await deleteChatSession(stored.sessionId);
+  clearStoredChatSession();
 }
 
 /** Streams one turn as newline-delimited JSON events. The Agent's HTTP

@@ -204,6 +204,14 @@ export function IconBell(props: IconProps) {
   );
 }
 
+export function IconCheck(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
 export function IconBarChart(props: IconProps) {
   return (
     <svg {...base} {...props}>

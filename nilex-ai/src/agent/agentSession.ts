@@ -27,9 +27,14 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 const SYSTEM_PROMPT = `You are Nilex AI, the assistant for a small task-management platform.
 
 You act on behalf of whoever you're chatting with, using the tools available to you to look up and
-manage tasks, users, and roles. Nothing is authenticated until you call the 'login' tool — if any
-other tool fails because you're not logged in, ask for an email and password and log in with them.
-Never repeat a password back in your reply, and don't log it.
+manage tasks, users, and roles. If 'login'/'logout' tools are available to you, nothing is authenticated
+until you call 'login' — if any other tool fails because you're not logged in, ask for an email and
+password and log in with them. Never repeat a password back in your reply, and don't log it. If
+'login'/'logout' tools are NOT available to you, this conversation is authenticated as the current
+dashboard user for its entire lifetime — you cannot log this user in, out, or in as someone else from
+here, full stop. If a tool ever reports you're not authenticated in that case, tell the user their
+dashboard session may need refreshing and to try again from the dashboard; never ask for credentials or
+imply you can fix it yourself.
 
 Keep replies short and conversational. After taking an action (creating, assigning, starting,
 completing, or deleting a task; managing a user or role), confirm what happened in a sentence or two
@@ -60,9 +65,12 @@ export type AgentStreamEvent =
 
 export class AgentSession {
   private mcpClient: Client;
+  private mcpClientAdapter!: MCPClientLike;
+  private rawTools: Awaited<ReturnType<Client["listTools"]>>["tools"] = [];
   private tools: ReturnType<typeof mcpTools> = [];
   private messages: Anthropic.Beta.Messages.BetaMessageParam[] = [];
   private ready: Promise<void>;
+  private bridged = false;
 
   constructor() {
     this.mcpClient = new Client({ name: "nilex-agent", version: "0.1.0" });
@@ -73,16 +81,36 @@ export class AgentSession {
     const transport = new StreamableHTTPClientTransport(new URL(getMcpUrl()));
     await this.mcpClient.connect(transport);
     const { tools } = await this.mcpClient.listTools();
+    this.rawTools = tools;
 
     // The MCP SDK's Client.callTool() return type is a broader union (it
     // includes a legacy shape without `content`) than the Anthropic SDK
     // helper's MCPClientLike expects. This thin adapter narrows it — the
     // Streamable HTTP transport we use only ever returns the modern
     // `{content: [...]}` shape at runtime, so the cast is safe.
-    const mcpClientAdapter: MCPClientLike = {
+    this.mcpClientAdapter = {
       callTool: (params) => this.mcpClient.callTool(params) as Promise<MCPCallToolResultLike>,
     };
-    this.tools = mcpTools(tools, mcpClientAdapter);
+    this.rebuildTools();
+  }
+
+  /** `login_with_token` is a programmatic bridge only (see
+   * authenticateWithToken) — never something the LLM should decide to call
+   * itself, regardless of session type. Once a session HAS been bridged that
+   * way, `login` AND `logout` become off-limits too: identity for a bridged
+   * session is owned entirely by the dashboard now, not by this
+   * conversation. If `logout` stayed available, "log me out" mid-chat would
+   * clear this session's auth with no way back in (this.bridged never
+   * resets), stranding the conversation even though the dashboard session
+   * is still perfectly valid — the fix for that dead end is to never let
+   * the chat sever what it can't re-establish itself. */
+  private rebuildTools(): void {
+    const excluded = new Set([
+      "login_with_token",
+      ...(this.bridged ? ["login", "logout"] : []),
+    ]);
+    const visible = this.rawTools.filter((t) => !excluded.has(t.name));
+    this.tools = mcpTools(visible, this.mcpClientAdapter);
   }
 
   /** Authenticates this session using a JWT the caller already has (e.g. the
@@ -100,6 +128,8 @@ export class AgentSession {
       const message = text && "text" in text ? text.text : "Authentication failed";
       throw new Error(message);
     }
+    this.bridged = true;
+    this.rebuildTools();
   }
 
   /** Sends one user turn through the full tool-use loop and returns Claude's

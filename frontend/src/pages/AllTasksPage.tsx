@@ -29,14 +29,14 @@ export function AllTasksPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-white">All Tasks</h1>
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-white">All Tasks</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">Every task across the team.</p>
         </div>
         <div className="flex items-center gap-3">
           <select
             value={priority}
             onChange={(e) => setPriority(e.target.value as TaskPriority | "")}
-            className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+            className="field-sm"
           >
             <option value="">All priorities</option>
             <option value="HIGH">High</option>

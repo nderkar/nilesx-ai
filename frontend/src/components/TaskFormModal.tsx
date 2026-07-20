@@ -60,7 +60,7 @@ export function TaskFormModal({ mode, task, users, onClose, onSubmit }: TaskForm
             autoFocus
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+            className="field"
             required
           />
         </div>
@@ -71,7 +71,7 @@ export function TaskFormModal({ mode, task, users, onClose, onSubmit }: TaskForm
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+            className="field"
           />
         </div>
 
@@ -81,7 +81,7 @@ export function TaskFormModal({ mode, task, users, onClose, onSubmit }: TaskForm
             <select
               value={priority}
               onChange={(e) => setPriority(e.target.value as TaskPriority)}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+              className="field"
             >
               <option value="HIGH">High</option>
               <option value="MEDIUM">Medium</option>
@@ -95,7 +95,7 @@ export function TaskFormModal({ mode, task, users, onClose, onSubmit }: TaskForm
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+              className="field"
             />
           </div>
         </div>
@@ -106,7 +106,7 @@ export function TaskFormModal({ mode, task, users, onClose, onSubmit }: TaskForm
             <select
               value={assigneeId}
               onChange={(e) => setAssigneeId(e.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+              className="field"
             >
               <option value="">Unassigned</option>
               {users.map((u) => (
@@ -124,14 +124,14 @@ export function TaskFormModal({ mode, task, users, onClose, onSubmit }: TaskForm
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+            className="btn-secondary"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={saving}
-            className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+            className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:opacity-60"
           >
             {saving ? "Saving..." : mode === "create" ? "Create task" : "Save changes"}
           </button>

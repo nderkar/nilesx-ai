@@ -80,6 +80,12 @@ Every assign/start/complete/update action writes a `TaskHistory` row (actor, fro
 - `reports/summary` extended with `byPriority`, `overdueCount`, `avgCompletionHours`
 - `notifications` extended with `COMMENTED`/`OVERDUE`/`DUE_SOON` entries (the latter two have no "actor" — they're derived from current state, not an event)
 
+### API docs
+
+**http://localhost:4000/docs** — interactive Swagger UI for all 30 endpoints (raw spec at `/docs/json`), via `@fastify/swagger` + `@fastify/swagger-ui`. Click **Authorize** and paste a JWT from `POST /auth/login` (`Bearer <token>`) to try authenticated routes directly from the browser; `POST /tool-settings/sync` uses a separate `X-Sync-Key` scheme instead (the shared secret, not a user JWT).
+
+Request body/query/param schemas are generated from the same Zod objects each route already validates with (`zod-to-json-schema`), so there's one source of truth — not two schemas that can drift apart. This does mean Fastify's own `ajv` validator now also runs against those schemas, before the handler's existing `.parse()` call — harmless double validation, but it meant a request that fails validation could come from either layer. The global error handler normalizes both into the same `{error: "Validation error", details: "..."}` shape, so the response contract stays identical either way. `/docs` itself is unauthenticated to *view* (standard for a dev/internal API) — worth gating behind auth or disabling before any real deployment.
+
 ## AI layer (Nilex AI — see `nilex-ai/README.md`)
 
 - **Phase 2 (done)**: MCP server exposing these operations as tools (`create_task`, `assign_task`, `list_my_tasks`, `start_task`, `complete_task`, ...), plus a `nilex` CLI on the same tool registry
@@ -87,6 +93,7 @@ Every assign/start/complete/update action writes a `TaskHistory` row (actor, fro
 - **Phase 4 (done)**: streaming Tailwind chat widget in this dashboard (`ChatWidget.tsx`), talking to the Agent's HTTP service, auto-authenticated with your dashboard session
 - **Phase 5 (done)**: dashboard polish — kanban task-detail history timeline, polling notifications, per-role dashboard views, basic reporting with charts
 - **Phase 6 (done)**: task priority/deadlines/time-tracking/comments, end to end — new MCP tools (`add_comment`, `list_comments`), `create_task`/`update_task`/`list_all_tasks` extended with `priority`/`dueDate`/`overdue`, and a color-coded `nilex` CLI (see below)
+- **Chat session identity fixes (done)**: the dashboard's chat widget now ties its session to the currently logged-in user — logging in as someone else or logging out discards any stale session instead of silently continuing to act as the previous user (`discardChatSessionIfStale()` in `frontend/src/lib/chatApi.ts`, called from `auth.tsx`'s `login()`/`logout()`). A dashboard-bridged chat session also can't call `login`/`logout` at all anymore — it can't ask an already-signed-in user to retype a password, and it can't strand itself unauthenticated with no way back in either. See `nilex-ai/README.md`'s Phase 4 section for the full mechanism.
 - **Next**: tests/CI, deployment
 
 ### `nilex` CLI — Phase 6 additions
