@@ -11,7 +11,10 @@ import {
   type AgentStreamEvent,
 } from "../lib/chatApi";
 import { useAuth } from "../lib/auth";
-import { IconMessageCircle, IconSend, IconTool, IconX } from "./icons";
+import { useToast } from "./ToastProvider";
+import { IconMessageCircle, IconMic, IconSend, IconTool, IconX } from "./icons";
+
+const SpeechRecognitionCtor = window.SpeechRecognition ?? window.webkitSpeechRecognition;
 
 interface ChatMessage {
   id: string;
@@ -27,11 +30,13 @@ function newId(): string {
 
 export function ChatWidget() {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [currentTool, setCurrentTool] = useState<string | null>(null);
+  const [listening, setListening] = useState(false);
 
   // auth.tsx already discards any session belonging to a different user
   // before login/logout swaps this component's identity in, so whatever's
@@ -39,6 +44,7 @@ export function ChatWidget() {
   const sessionIdRef = useRef<string | null>(getStoredChatSession()?.sessionId ?? null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -47,6 +53,53 @@ export function ChatWidget() {
   useEffect(() => {
     if (open) inputRef.current?.focus();
   }, [open]);
+
+  // Stop any in-progress recognition if the component ever unmounts —
+  // ChatWidget is always-mounted in practice (see the open/close transition
+  // below), but this guards against React StrictMode's double-invoke and
+  // any future change to that assumption.
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.stop();
+    };
+  }, []);
+
+  // Fills the input as you speak rather than auto-sending on silence — a
+  // misheard task title/ID going straight to the AI agent unreviewed is a
+  // worse failure mode than one extra click, so this always leaves you a
+  // chance to read and correct the transcript before hitting Send.
+  function toggleListening() {
+    if (listening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    if (!SpeechRecognitionCtor) return;
+
+    const recognition = new SpeechRecognitionCtor();
+    recognition.lang = navigator.language || "en-US";
+    recognition.interimResults = true;
+    recognition.continuous = false;
+
+    recognition.onresult = (event) => {
+      let transcript = "";
+      for (let i = 0; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+      setInput(transcript);
+    };
+    recognition.onerror = () => {
+      showToast("Couldn't hear you — try again", "error");
+    };
+    recognition.onend = () => {
+      setListening(false);
+      recognitionRef.current = null;
+      inputRef.current?.focus();
+    };
+
+    recognitionRef.current = recognition;
+    setListening(true);
+    recognition.start();
+  }
 
   async function ensureSession(): Promise<string> {
     if (sessionIdRef.current) return sessionIdRef.current;
@@ -227,6 +280,22 @@ export function ChatWidget() {
             disabled={sending}
             className="flex-1 rounded-full border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 shadow-sm outline-none transition-all duration-150 placeholder:text-slate-400 hover:border-slate-300 focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/10 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:hover:border-slate-600 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/10"
           />
+          {SpeechRecognitionCtor && (
+            <button
+              type="button"
+              onClick={toggleListening}
+              disabled={sending}
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-40 ${
+                listening
+                  ? "animate-pulse bg-red-500 text-white hover:bg-red-500"
+                  : "bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+              }`}
+              aria-label={listening ? "Stop voice input" : "Start voice input"}
+              title={listening ? "Stop voice input" : "Start voice input"}
+            >
+              <IconMic className="h-4 w-4" />
+            </button>
+          )}
           <button
             type="submit"
             disabled={sending || !input.trim()}

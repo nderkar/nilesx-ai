@@ -4,3 +4,7 @@ dist/
 backend/generated/
 frontend/dist/
 *.log
+
+# IDE-generated aggregation of markdown docs (mirrors files that already
+# live in their real locations) — not source content, shouldn't be committed.
+/docs/
