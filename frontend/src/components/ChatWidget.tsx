@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import {
   ChatSessionNotFoundError,
@@ -12,7 +12,7 @@ import {
 } from "../lib/chatApi";
 import { useAuth } from "../lib/auth";
 import { useToast } from "./ToastProvider";
-import { IconMessageCircle, IconMic, IconSend, IconTool, IconX } from "./icons";
+import { IconMessageCircle, IconMic, IconPlus, IconSend, IconTool, IconX } from "./icons";
 
 const SpeechRecognitionCtor = window.SpeechRecognition ?? window.webkitSpeechRecognition;
 
@@ -43,8 +43,13 @@ export function ChatWidget() {
   // in storage at mount time is guaranteed to already be ours (or empty).
   const sessionIdRef = useRef<string | null>(getStoredChatSession()?.sessionId ?? null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  // Whatever was already in the box when the current listening session
+  // started — captured once per session so onresult can append to it
+  // instead of overwriting it on every update.
+  const baseTextRef = useRef("");
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -53,6 +58,16 @@ export function ChatWidget() {
   useEffect(() => {
     if (open) inputRef.current?.focus();
   }, [open]);
+
+  // Auto-grow the textarea as you type multiple lines, capped at ~5 lines —
+  // past that it scrolls internally instead of pushing the message list
+  // (and the launcher button) further off-screen.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }, [input]);
 
   // Stop any in-progress recognition if the component ever unmounts —
   // ChatWidget is always-mounted in practice (see the open/close transition
@@ -75,6 +90,11 @@ export function ChatWidget() {
     }
     if (!SpeechRecognitionCtor) return;
 
+    // Snapshot whatever's already typed/transcribed so far — a second
+    // listening session (stop, then start again) appends to it rather than
+    // replacing it.
+    baseTextRef.current = input.trim();
+
     const recognition = new SpeechRecognitionCtor();
     recognition.lang = navigator.language || "en-US";
     recognition.interimResults = true;
@@ -85,7 +105,8 @@ export function ChatWidget() {
       for (let i = 0; i < event.results.length; i++) {
         transcript += event.results[i][0].transcript;
       }
-      setInput(transcript);
+      const base = baseTextRef.current;
+      setInput(base ? `${base} ${transcript}` : transcript);
     };
     recognition.onerror = () => {
       showToast("Couldn't hear you — try again", "error");
@@ -99,6 +120,32 @@ export function ChatWidget() {
     recognitionRef.current = recognition;
     setListening(true);
     recognition.start();
+  }
+
+  // Cancels any in-progress listening (without letting a straggling final
+  // result resurrect the text right after clearing) and empties the box.
+  function clearInput() {
+    if (recognitionRef.current) {
+      recognitionRef.current.onresult = null;
+      recognitionRef.current.onend = null;
+      recognitionRef.current.onerror = null;
+      recognitionRef.current.abort();
+      recognitionRef.current = null;
+      setListening(false);
+    }
+    baseTextRef.current = "";
+    setInput("");
+    inputRef.current?.focus();
+  }
+
+  // File attachments aren't wired up to the backend yet — this just opens
+  // the picker and lets the user know uploads are on the way, rather than
+  // silently doing nothing when they pick a file.
+  function handleFileChosen(e: ChangeEvent<HTMLInputElement>) {
+    if (e.target.files?.length) {
+      showToast("File uploads are coming soon");
+    }
+    e.target.value = "";
   }
 
   async function ensureSession(): Promise<string> {
@@ -174,12 +221,27 @@ export function ChatWidget() {
     }
   }
 
-  function handleSubmit(e: FormEvent) {
-    e.preventDefault();
+  function submitMessage() {
     const text = input.trim();
     if (!text || sending) return;
     setInput("");
     send(text);
+  }
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    submitMessage();
+  }
+
+  // Enter sends, Shift+Enter inserts a newline (the standard chat-app
+  // convention) — the textarea's default behavior on a bare Enter would
+  // otherwise just insert a newline too, so that case is intercepted and
+  // routed through the same submit path the form/button use.
+  function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      submitMessage();
+    }
   }
 
   async function handleNewChat() {
@@ -268,42 +330,78 @@ export function ChatWidget() {
           )}
         </div>
 
-        <form
-          onSubmit={handleSubmit}
-          className="flex items-center gap-2 border-t border-slate-100 p-3 dark:border-slate-800"
-        >
-          <input
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Message Nilex AI..."
-            disabled={sending}
-            className="flex-1 rounded-full border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 shadow-sm outline-none transition-all duration-150 placeholder:text-slate-400 hover:border-slate-300 focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/10 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:hover:border-slate-600 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/10"
-          />
-          {SpeechRecognitionCtor && (
-            <button
-              type="button"
-              onClick={toggleListening}
-              disabled={sending}
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-40 ${
-                listening
-                  ? "animate-pulse bg-red-500 text-white hover:bg-red-500"
-                  : "bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-              }`}
-              aria-label={listening ? "Stop voice input" : "Start voice input"}
-              title={listening ? "Stop voice input" : "Start voice input"}
-            >
-              <IconMic className="h-4 w-4" />
-            </button>
-          )}
-          <button
-            type="submit"
-            disabled={sending || !input.trim()}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white transition-colors hover:bg-indigo-500 disabled:opacity-40"
-            aria-label="Send"
-          >
-            <IconSend className="h-4 w-4" />
-          </button>
+        <form onSubmit={handleSubmit} className="border-t border-slate-100 p-3 dark:border-slate-800">
+          <div className="flex min-h-18 w-full flex-col rounded-3xl border border-slate-200 bg-white px-3 pb-2 pt-2.5 shadow-sm transition-all duration-150 hover:border-slate-300 focus-within:border-indigo-300 focus-within:ring-4 focus-within:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800 dark:hover:border-slate-600 dark:focus-within:border-indigo-400 dark:focus-within:ring-indigo-400/10">
+            <div className="relative">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Message Nilex AI... (Shift+Enter for a new line)"
+                disabled={sending}
+                rows={1}
+                className="max-h-30 w-full resize-none overflow-y-auto bg-transparent pr-6 text-sm text-slate-900 outline-none placeholder:text-slate-400 disabled:opacity-60 dark:text-white dark:placeholder:text-slate-500"
+              />
+              {input && (
+                <button
+                  type="button"
+                  onClick={clearInput}
+                  className="absolute right-0 top-0 rounded-full p-0.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                  aria-label="Clear message"
+                  title="Clear"
+                >
+                  <IconX className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="mt-1 flex items-end justify-between">
+              <div className="flex items-center gap-1">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,.pdf,.doc,.docx,.txt"
+                  onChange={handleFileChosen}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={sending}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-700"
+                  aria-label="Attach image or document"
+                  title="Attach image or document"
+                >
+                  <IconPlus className="h-4 w-4" />
+                </button>
+                {SpeechRecognitionCtor && (
+                  <button
+                    type="button"
+                    onClick={toggleListening}
+                    disabled={sending}
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-40 ${
+                      listening
+                        ? "animate-pulse bg-red-500 text-white hover:bg-red-500"
+                        : "text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
+                    }`}
+                    aria-label={listening ? "Stop voice input" : "Start voice input"}
+                    title={listening ? "Stop voice input" : "Start voice input"}
+                  >
+                    <IconMic className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              <button
+                type="submit"
+                disabled={sending || !input.trim()}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white transition-colors hover:bg-indigo-500 disabled:opacity-40"
+                aria-label="Send"
+              >
+                <IconSend className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
         </form>
       </div>
     </>

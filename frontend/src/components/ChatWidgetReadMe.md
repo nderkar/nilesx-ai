@@ -3,17 +3,18 @@
 `ChatWidget.tsx` is the floating chat bubble on every page of the dashboard.
 This document explains it end to end: what it is, exactly how a typed
 message travels through the Agent, the LLM, MCP, and the backend API before
-a reply streams back, and — since this came up explicitly — where the
-Claude API key lives and why it never reaches your browser. Two
-definitions per concept throughout: **Technical**, then **Natural
-Language**.
+a reply streams back, where the Claude API key lives and why it never
+reaches your browser, and (§9) how the microphone/voice-input feature
+works, down to why it appends instead of overwriting across sessions and
+why clearing the box uses `.abort()` instead of `.stop()`. Two definitions
+per concept throughout: **Technical**, then **Natural Language**.
 
 ---
 
 ## 1. What is ChatWidget?
 
 **Technical:** a self-contained React component (`frontend/src/components/ChatWidget.tsx`,
-~240 lines, no external state library) that renders a floating toggle
+~350 lines, no external state library) that renders a floating toggle
 button plus a chat panel, and talks exclusively to one HTTP surface — the
 **Nilex Agent**'s API (`nilex-ai/src/agent/server.ts`, proxied through Vite
 as `/agent` → `http://localhost:4200`) via helper functions in
@@ -33,8 +34,9 @@ exact same API and permission checks the dashboard's own buttons use.
 
 | File | Role | Runs where |
 |---|---|---|
-| `frontend/src/components/ChatWidget.tsx` | The UI: button, panel, message list, input, streaming render | Browser |
+| `frontend/src/components/ChatWidget.tsx` | The UI: button, panel, message list, input, streaming render, voice input (§9) | Browser |
 | `frontend/src/lib/chatApi.ts` | HTTP helpers + session-storage bookkeeping (`createChatSession`, `streamChatMessage`, `discardChatSessionIfStale`, ...) | Browser |
+| `frontend/src/speech.d.ts` | Hand-written ambient types for the non-standardized `SpeechRecognition` API (§9) | Browser (types only — erased at build time) |
 | `frontend/src/lib/auth.tsx` | Calls `discardChatSessionIfStale()` on login/logout so the widget's session tracks the current dashboard user | Browser |
 | `nilex-ai/src/agent/server.ts` | HTTP surface: `POST /chat/sessions`, `.../messages/stream`, `DELETE /chat/sessions/:id` | Node (Agent process, port `4200`) |
 | `nilex-ai/src/agent/agentSession.ts` | One conversation's state: message history + a live MCP client connection + the Claude API tool-use loop | Node (Agent process) |
@@ -275,7 +277,185 @@ same in reverse when you close it.
 
 ---
 
-## 9. Error handling
+## 9. Voice input
+
+**Technical:** a microphone button, wired to the browser's built-in
+[Web Speech API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Speech_API)
+(`SpeechRecognition`), fills the message box as you speak — no server, no
+new dependency, no audio ever leaves the browser process (the *browser
+itself* is what turns speech into text; this project just reads the result).
+
+**Natural Language:** click the mic, talk, and your words appear in the
+text field the same way they would if you'd typed them — then you review
+and hit Send yourself, same as any other message.
+
+### `SpeechRecognitionCtor` — feature detection
+
+```ts
+const SpeechRecognitionCtor = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+```
+
+**Technical:** a module-level constant (computed once, not per-render)
+that resolves to whichever constructor the current browser actually
+exposes — the unprefixed `SpeechRecognition` (the eventual standard name)
+or the `webkit`-prefixed version (what Chrome/Edge/Safari currently ship,
+since this API never finished standardizing). If **neither** exists —
+Firefox, most non-Chromium browsers — this is `undefined`, and it's checked
+in exactly two places: to decide whether the mic button renders at all
+(`{SpeechRecognitionCtor && (<button>...)}`), and as an early return inside
+`toggleListening()` (`if (!SpeechRecognitionCtor) return;`, a defensive
+second check in case the function were ever called some other way). Neither
+`SpeechRecognition` nor `webkitSpeechRecognition` is part of TypeScript's
+built-in DOM types — `frontend/src/speech.d.ts` hand-declares just enough
+of the shape (`SpeechRecognitionLike`, its event types, and the two
+`Window` properties) for this file to type-check, rather than pulling in a
+types-only package for a handful of fields.
+
+**Natural Language:** this line is *the* on/off switch for the entire
+feature. On a browser that supports it, it holds the "class" you build a
+recognizer from; on one that doesn't, it's `undefined`, and every part of
+the UI that depends on it simply doesn't appear — no broken button, no
+error message, the chat just works exactly as it would without this
+feature existing.
+
+### Starting a session — `toggleListening()`
+
+```ts
+const recognition = new SpeechRecognitionCtor();
+recognition.lang = navigator.language || "en-US";
+recognition.interimResults = true;
+recognition.continuous = false;
+```
+
+| Setting | Technical | Natural Language |
+|---|---|---|
+| `lang` | Set from `navigator.language` (the browser's own locale, e.g. `"en-US"`, `"en-GB"`) with a hard-coded fallback | Recognizes speech in *your* browser's language, not a fixed one |
+| `interimResults = true` | The engine fires `onresult` repeatedly *while you're still talking*, with not-yet-final guesses that get revised in place | Text appears live, word by word, instead of only after you stop |
+| `continuous = false` | The engine decides on its own when you've paused long enough and stops itself | See the "what delay?" note below — this isn't a value this project sets |
+
+> There's no configurable "silence delay" here — `continuous = false` just
+> tells the browser to auto-stop after one utterance; *how long* it waits
+> before deciding you're done is entirely the browser engine's own
+> internal, undocumented heuristic (roughly 1.5–2s on Chrome in practice,
+> but not a guarantee). Making that configurable would mean switching to
+> `continuous = true` and running your own silence timer instead — not
+> currently done, since the implicit behavior has been good enough.
+
+### Appending across sessions — `baseTextRef`
+
+**Technical:** `event.results` accumulates *only within the current
+recognition session* — every `onresult` callback rebuilds the full
+transcript for *this* session from scratch by concatenating
+`event.results[i][0].transcript` across the whole array. To make a second
+session (stop, then click the mic again) *add to* what's already in the
+box instead of replacing it, `toggleListening()` snapshots the box's
+current contents into a ref the instant a new session starts:
+
+```ts
+baseTextRef.current = input.trim();
+// ...
+recognition.onresult = (event) => {
+  let transcript = "";
+  for (let i = 0; i < event.results.length; i++) {
+    transcript += event.results[i][0].transcript;
+  }
+  const base = baseTextRef.current;
+  setInput(base ? `${base} ${transcript}` : transcript);
+};
+```
+
+A `ref` rather than a second piece of state, deliberately — this value
+needs to be read inside a callback (`onresult`) that closes over whichever
+render it was created in; a ref always reads the *latest* assignment
+regardless of closures, where reading `input` directly inside that same
+callback could see a stale snapshot from the render the callback was
+created in.
+
+**Natural Language:** every time you *start* listening (not every time you
+speak), the widget remembers what was already typed. From then on, as you
+talk, it shows *that remembered text* plus *exactly one space* plus
+whatever you're currently saying — so stopping and starting again builds
+up a longer message instead of throwing away what you already had.
+
+### Clearing — `clearInput()`
+
+```ts
+function clearInput() {
+  if (recognitionRef.current) {
+    recognitionRef.current.onresult = null;
+    recognitionRef.current.onend = null;
+    recognitionRef.current.onerror = null;
+    recognitionRef.current.abort();
+    recognitionRef.current = null;
+    setListening(false);
+  }
+  baseTextRef.current = "";
+  setInput("");
+  inputRef.current?.focus();
+}
+```
+
+**Technical:** the × button that appears inside the input field once it
+has any text. If a recognition session is active when you clear, this does
+**four** things in order, and the order matters: (1) strip all three event
+handlers off the in-flight `recognition` object so it can no longer touch
+component state no matter what it does next, (2) call `.abort()` — not
+`.stop()` — which per spec discards in-progress results instead of
+delivering one final `onresult` first; using `.stop()` here would risk a
+last "final" transcript arriving *after* the box was already cleared and
+silently refilling it, (3) drop the ref and flip `listening` back to
+`false` immediately rather than waiting for an `onend` that might not fire
+promptly (or at all) after an abort, (4) reset `baseTextRef` so a
+*subsequent* listening session starts clean instead of quietly resurrecting
+the text you just cleared.
+
+**Natural Language:** clicking × doesn't just empty the box — if you were
+mid-sentence with the mic still on, it also fully cancels that listening
+session first, so there's no chance of your last few words sneaking back
+in a moment after you cleared them.
+
+### Errors and the mic button's visual state
+
+**Technical:** `onerror` shows a toast (`showToast("Couldn't hear you — try again", "error")`,
+reusing the app-wide `ToastProvider` already used elsewhere — see
+`TaskBoard.tsx`'s Start/Complete flow for the other consumer) rather than
+touching the chat message list — a failed *recognition* isn't a failed
+*chat message*, so it doesn't belong in the conversation transcript. The
+button itself reflects `listening` directly in its class list: idle is a
+neutral slate circle, active is `animate-pulse bg-red-500` — the same
+"something's live" visual language as the streaming tool-use indicator
+(`IconTool` with `animate-pulse`, §7) and the notification badge
+(`NotificationBellReadMe.md`), reused rather than invented fresh.
+
+**Natural Language:** if it can't hear you — no permission, no
+microphone, a network hiccup on browsers that use a cloud recognition
+service — you get a small toast telling you to try again, and the mic
+button quietly returns to its normal color. Nothing about the conversation
+itself is touched.
+
+### Voice input, end to end
+
+```mermaid
+sequenceDiagram
+    participant You
+    participant Btn as Mic button
+    participant Rec as SpeechRecognition (browser-native)
+    participant Box as Input field
+
+    You->>Btn: click (idle → listening)
+    Btn->>Box: baseTextRef = current box contents
+    Btn->>Rec: new SpeechRecognitionCtor(); .start()
+    loop while speaking
+        Rec-->>Box: onresult → setInput(base + " " + transcript so far)
+    end
+    Rec-->>Btn: onend (browser decided you paused)
+    Btn->>Btn: listening = false, refocus the box
+    Note over You,Box: You review/edit, then press Send yourself —\nnothing here submits automatically
+```
+
+---
+
+## 10. Error handling
 
 **Technical:** every failure surfaces as a red assistant bubble
 (`isError: true`) rather than a thrown exception reaching React — `send()`'s
@@ -291,7 +471,7 @@ doing nothing or the page crashing.
 
 ---
 
-## 10. Related docs
+## 11. Related docs
 
 - **`nilex-ai/README.md`** (Phase 4 section) — the Agent's HTTP API in
   full, with `curl` examples for every endpoint this widget calls
